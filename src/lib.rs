@@ -8,6 +8,10 @@ mod pretty;
 
 use crate::pretty::pretty_replace;
 
+pub enum Alias {
+    Name(String),
+    Number(usize),
+}
 pub type Name = String;
 
 #[derive(Debug, Clone)]
@@ -33,12 +37,16 @@ impl std::fmt::Display for Repr {
 /// The brackets used to indicate aliased values, set by [`set_brackets`].
 static BRACKETS: OnceLock<(&'static str, &'static str)> = OnceLock::new();
 
+/// The mapping of Debug values to their last numbering, grouped by type.
+static NUMBERS: LazyLock<Mutex<BTreeMap<TypeId, BTreeMap<String, u32>>>> =
+    LazyLock::new(|| Mutex::new(BTreeMap::new()));
+
 /// The mapping of Debug values to their aliases.
-static DEBUG_ALIASES: LazyLock<Mutex<BTreeMap<String, AliasString>>> =
+static DEBUG_NAMES: LazyLock<Mutex<BTreeMap<String, AliasString>>> =
     LazyLock::new(|| Mutex::new(BTreeMap::new()));
 
 /// The mapping of pretty-printed Debug values to their aliases.
-static PRETTY_ALIASES: LazyLock<Mutex<BTreeMap<String, AliasString>>> =
+static PRETTY_NAMES: LazyLock<Mutex<BTreeMap<String, AliasString>>> =
     LazyLock::new(|| Mutex::new(BTreeMap::new()));
 
 static PREFIXES: LazyLock<Mutex<BTreeMap<TypeId, Prefix>>> =
@@ -50,6 +58,14 @@ pub fn set_aliased_brackets(brackets: (&'static str, &'static str)) {
     BRACKETS
         .set(brackets)
         .expect("Cannot set `aliased` brackets more than once");
+}
+
+/// For testing, forget all aliasing data
+pub fn reset() {
+    NUMBERS.lock().unwrap().clear();
+    DEBUG_NAMES.lock().unwrap().clear();
+    PRETTY_NAMES.lock().unwrap().clear();
+    PREFIXES.lock().unwrap().clear();
 }
 
 fn brackets() -> (&'static str, &'static str) {
@@ -75,6 +91,15 @@ pub trait Aliasing: std::fmt::Debug + 'static {
         }
     }
 
+    fn alias_numbered(&self) -> &Self {
+        let type_id = std::any::TypeId::of::<Self>();
+        let mut lock = NUMBERS.lock().unwrap();
+        let counter = lock.entry(type_id).or_default();
+        let number = counter.entry(format!("{self:?}")).or_insert(0);
+        *number += 1;
+        self
+    }
+
     fn alias_named(&self, name: &str) -> &Self {
         let prefix = PREFIXES
             .lock()
@@ -86,11 +111,11 @@ pub trait Aliasing: std::fmt::Debug + 'static {
             prefix,
         };
 
-        DEBUG_ALIASES
+        DEBUG_NAMES
             .lock()
             .unwrap()
             .insert(format!("{self:?}"), repr.to_string());
-        PRETTY_ALIASES
+        PRETTY_NAMES
             .lock()
             .unwrap()
             .insert(format!("{self:#?}"), repr.to_string());
@@ -104,16 +129,17 @@ pub struct Aliased<'a, T: ?Sized>(pub &'a T);
 
 impl<T: ?Sized + std::fmt::Debug> std::fmt::Debug for Aliased<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut rep;
         if f.alternate() {
-            let lock = PRETTY_ALIASES.lock().unwrap();
-            let mut debug = format!("{:#?}", self.0);
+            let lock = PRETTY_NAMES.lock().unwrap();
+            rep = format!("{:#?}", self.0);
             for (key, repr) in lock.iter().rev() {
-                debug = pretty_replace(&debug, key, &repr.to_string());
+                rep = pretty_replace(&rep, key, &repr.to_string());
             }
-            write!(f, "{}", debug)
+            write!(f, "{}", rep)
         } else {
-            let lock = DEBUG_ALIASES.lock().unwrap();
-            let mut rep = format!("{:?}", self.0);
+            let lock = DEBUG_NAMES.lock().unwrap();
+            rep = format!("{:?}", self.0);
             for (key, repr) in lock.iter().rev() {
                 rep = rep.replace(key, &repr.to_string());
             }
