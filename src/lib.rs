@@ -8,15 +8,24 @@ mod pretty;
 
 use crate::pretty::pretty_replace;
 
+#[derive(Debug, Clone)]
 pub enum Alias {
     Name(String),
     Number(usize),
 }
-pub type Name = String;
+
+impl std::fmt::Display for Alias {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Alias::Name(name) => write!(f, "{}", name),
+            Alias::Number(num) => write!(f, "#{:03}", num),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 struct Repr {
-    name: Name,
+    alias: Alias,
     prefix: Option<String>,
 }
 
@@ -27,9 +36,9 @@ impl std::fmt::Display for Repr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let (open, close) = brackets();
         if let Some(prefix) = &self.prefix {
-            write!(f, "{open}{prefix}|{}{close}", self.name)
+            write!(f, "{open}{prefix}|{}{close}", self.alias)
         } else {
-            write!(f, "{open}{}{close}", self.name)
+            write!(f, "{open}{}{close}", self.alias)
         }
     }
 }
@@ -38,7 +47,7 @@ impl std::fmt::Display for Repr {
 static BRACKETS: OnceLock<(&'static str, &'static str)> = OnceLock::new();
 
 /// The mapping of Debug values to their last numbering, grouped by type.
-static NUMBERS: LazyLock<Mutex<BTreeMap<TypeId, BTreeMap<String, u32>>>> =
+static NUMBERS: LazyLock<Mutex<BTreeMap<TypeId, BTreeMap<String, usize>>>> =
     LazyLock::new(|| Mutex::new(BTreeMap::new()));
 
 /// The mapping of Debug values to their aliases.
@@ -51,6 +60,17 @@ static PRETTY_NAMES: LazyLock<Mutex<BTreeMap<String, AliasString>>> =
 
 static PREFIXES: LazyLock<Mutex<BTreeMap<TypeId, Prefix>>> =
     LazyLock::new(|| Mutex::new(BTreeMap::new()));
+
+pub fn dump() {
+    let numbers = NUMBERS.lock().unwrap();
+    let debug_names = DEBUG_NAMES.lock().unwrap();
+    let pretty_names = PRETTY_NAMES.lock().unwrap();
+    let prefixes = PREFIXES.lock().unwrap();
+    println!("NUMBERS: {numbers:#?}");
+    println!("DEBUG_NAMES: {debug_names:#?}");
+    // println!("PRETTY_NAMES: {pretty_names:#?}");
+    println!("PREFIXES: {prefixes:#?}");
+}
 
 /// Change the brackets used to indicate aliased values.
 /// This can only be called once, and **panics** if called more than once.
@@ -83,11 +103,13 @@ pub trait Aliasing: std::fmt::Debug + 'static {
         let mut lock = PREFIXES.lock().unwrap();
 
         if lock.values().find(|v| *v == prefix).is_some() {
-            panic!("There is already a type with prefix `{prefix}`",);
+            #[cfg(feature = "tracing")]
+            tracing::warn!("There is already a type with prefix `{prefix}`",);
         }
 
         if let Some(existing) = lock.insert(type_id, prefix.to_string()) {
-            panic!("Cannot set prefix more than once: existing prefix is `{existing}`",);
+            #[cfg(feature = "tracing")]
+            tracing::warn!("Cannot set prefix more than once: existing prefix is `{existing}`",);
         }
     }
 
@@ -95,8 +117,28 @@ pub trait Aliasing: std::fmt::Debug + 'static {
         let type_id = std::any::TypeId::of::<Self>();
         let mut lock = NUMBERS.lock().unwrap();
         let counter = lock.entry(type_id).or_default();
-        let number = counter.entry(format!("{self:?}")).or_insert(0);
-        *number += 1;
+        let entry = counter.entry(format!("{self:?}")).or_insert(0);
+        let number = *entry;
+        *entry += 1;
+
+        let prefix = PREFIXES
+            .lock()
+            .unwrap()
+            .get(&std::any::TypeId::of::<Self>())
+            .cloned();
+        let repr = Repr {
+            alias: Alias::Number(number),
+            prefix,
+        };
+
+        DEBUG_NAMES
+            .lock()
+            .unwrap()
+            .insert(format!("{self:?}"), repr.to_string());
+        PRETTY_NAMES
+            .lock()
+            .unwrap()
+            .insert(format!("{self:#?}"), repr.to_string());
         self
     }
 
@@ -107,7 +149,7 @@ pub trait Aliasing: std::fmt::Debug + 'static {
             .get(&std::any::TypeId::of::<Self>())
             .cloned();
         let repr = Repr {
-            name: name.to_string(),
+            alias: Alias::Name(name.to_string()),
             prefix,
         };
 

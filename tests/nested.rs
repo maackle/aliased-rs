@@ -37,8 +37,6 @@ fn test_nested_names() {
     reset();
     let s = fixture();
 
-    set_aliased_brackets(("༼", "༽"));
-
     PublicKey::aliased_with_prefix("K");
     SecretKey::aliased_with_prefix("S");
 
@@ -47,23 +45,25 @@ fn test_nested_names() {
     s.u.keys[2].alias_named("key-c");
     s.u.secret.alias_named("secret");
 
+    dump();
+
     let d = format!("{:?}", s.aliased());
     let p = format!("{:#?}", s.aliased());
 
     assert_eq!(
         d,
-        "MyStruct { u: UpstreamStruct { secret: ༼S|secret༽, keys: [༼K|key-a༽, ༼K|key-b༽, ༼K|key-c༽] } }"
+        "MyStruct { u: UpstreamStruct { secret: ⟪S|secret⟫, keys: [⟪K|key-a⟫, ⟪K|key-b⟫, ⟪K|key-c⟫] } }"
     );
     assert_eq!(
         p,
         "
 MyStruct {
     u: UpstreamStruct {
-        secret: ༼S|secret༽,
+        secret: ⟪S|secret⟫,
         keys: [
-            ༼K|key-a༽,
-            ༼K|key-b༽,
-            ༼K|key-c༽,
+            ⟪K|key-a⟫,
+            ⟪K|key-b⟫,
+            ⟪K|key-c⟫,
         ],
     },
 }
