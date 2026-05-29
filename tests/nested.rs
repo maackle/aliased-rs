@@ -1,7 +1,6 @@
 use aliased::*;
 
 use derive_more::derive::{Deref, Display, From};
-use tracing_subscriber::fmt::format;
 
 fn to_hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{:02x}", b)).collect()

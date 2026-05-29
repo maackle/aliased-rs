@@ -1,38 +1,30 @@
-pub fn pretty_replace(text: &str, old: &str, replacement: &str) -> String {
-    let pattern = pretty_pattern(old);
-    regex::Regex::new(&pattern)
-        .unwrap()
-        .replace_all(&text, PrettyReplacer(&replacement))
-        .to_string()
-}
-
-pub fn pretty_pattern(pretty_dbg: &str) -> String {
-    pretty_dbg
+pub(crate) fn pretty_regex(pretty_dbg: &str) -> regex::Regex {
+    let pattern = pretty_dbg
         .split('\n')
         .map(|line| format!(" *{}", regex::escape(line)))
         .collect::<Vec<_>>()
-        .join("\n")
+        .join("\n");
+    regex::Regex::new(&pattern).expect("pretty pattern is always a valid regex")
 }
 
-pub struct PrettyReplacer<'a>(pub &'a str);
+pub(crate) fn pretty_replace(regex: &regex::Regex, text: &str, replacement: &str) -> String {
+    regex
+        .replace_all(text, PrettyReplacer(replacement))
+        .to_string()
+}
+
+struct PrettyReplacer<'a>(&'a str);
 
 impl<'a> regex::Replacer for PrettyReplacer<'a> {
     fn replace_append(&mut self, caps: &regex::Captures<'_>, dst: &mut String) {
-        for cap in caps.iter() {
-            let cap = cap.unwrap();
-            let spaces = cap
-                .as_str()
-                .chars()
-                .take_while(|c| c.is_whitespace())
-                .collect::<String>();
-            // let spaces = " ".repeat(cap.start() - 1);
-            let r = self
-                .0
-                .split('\n')
-                .map(|line| format!("{spaces}{line}"))
-                .collect::<Vec<_>>()
-                .join("\n");
-            dst.push_str(&r);
-        }
+        let matched = caps.get(0).expect("a match always has group 0").as_str();
+        let spaces: String = matched.chars().take_while(|c| c.is_whitespace()).collect();
+        let replaced = self
+            .0
+            .split('\n')
+            .map(|line| format!("{spaces}{line}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        dst.push_str(&replaced);
     }
 }
