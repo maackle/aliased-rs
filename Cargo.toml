@@ -10,16 +10,24 @@ readme = "README.md"
 keywords = ["debug", "logging", "alias", "pretty-print", "testing"]
 categories = ["development-tools::debugging", "development-tools::testing"]
 
+[package.metadata.docs.rs]
+all-features = true
+
 [dependencies]
 regex = "1"
 tracing = { version = "0.1", optional = true }
 
 [dev-dependencies]
+# Self dev-dep activates `contextual` for tests/doctests/examples without
+# requiring `cargo test --features contextual` on the command line.
+aliased = { path = ".", default-features = false, features = ["contextual", "tracing"] }
 derive_more = { version = "1.0", features = ["full"] }
-hex = "0.4.3"
-pretty_assertions = "1.4"
-tracing-subscriber = "0.3"
-trybuild = "1"
 
 [features]
-default = ["tracing"]
+default = ["global", "tracing"]
+
+# Exposes trait which implicitly uses a single global `AliasContext`.
+global = []
+
+# Exposes trait which requires an explicit `AliasContext` to be passed in.
+contextual = []
