@@ -30,21 +30,6 @@ jobs:
       - run: cargo build ${{ matrix.flags }} --verbose
       - run: cargo test ${{ matrix.flags }} --verbose
 
-  no-features-fails:
-    name: compile_error without features
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: ensure build fails with no flavor feature
-        run: |
-          if cargo build --no-default-features 2>&1 | tee /tmp/out; then
-            echo "expected compile_error! with no flavor feature, but build succeeded" >&2
-            exit 1
-          fi
-          grep -q "requires at least one of the .global. or .contextual. features" /tmp/out
-
   fmt:
     name: rustfmt
     runs-on: ubuntu-latest

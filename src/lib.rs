@@ -10,7 +10,7 @@
 //! Two flavors are available, selected by Cargo features:
 //!
 //! - **`global`** (default): the trait methods at [`Aliasing`] use a
-//!   process-wide [`AliasContext`] obtained via [`global_ctx`]. No context
+//!   process-wide [`AliasContext`] obtained via [`contextual::global_ctx`]. No context
 //!   to thread through call sites.
 //! - **`contextual`**: [`contextual::Aliasing`] takes an explicit
 //!   `&AliasContext`, so callers can keep isolated contexts (e.g. one per
