@@ -1,5 +1,6 @@
 use std::any::TypeId;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use std::sync::LazyLock;
 use std::sync::Mutex;
 use std::sync::OnceLock;
@@ -23,10 +24,11 @@ impl std::fmt::Display for Alias {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct Repr {
     alias: Alias,
     prefix: Option<String>,
+    brackets: (&'static str, &'static str),
 }
 
 pub type Prefix = String;
@@ -34,7 +36,7 @@ pub type AliasString = String;
 
 impl std::fmt::Display for Repr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let (open, close) = brackets();
+        let (open, close) = self.brackets;
         if let Some(prefix) = &self.prefix {
             write!(f, "{open}{prefix}|{}{close}", self.alias)
         } else {
@@ -43,123 +45,134 @@ impl std::fmt::Display for Repr {
     }
 }
 
-/// The brackets used to indicate aliased values, set by [`set_brackets`].
-static BRACKETS: OnceLock<(&'static str, &'static str)> = OnceLock::new();
+pub struct AliasData {
+    /// The brackets used to indicate aliased values, set by [`set_brackets`].
+    brackets: (&'static str, &'static str),
 
-/// The mapping of Debug values to their last numbering, grouped by type.
-static NUMBERS: LazyLock<Mutex<BTreeMap<TypeId, BTreeMap<String, usize>>>> =
-    LazyLock::new(|| Mutex::new(BTreeMap::new()));
+    /// The mapping of Debug values to their last numbering, grouped by type.
+    numbers: BTreeMap<TypeId, BTreeMap<String, usize>>,
 
-/// The mapping of Debug values to their aliases.
-static DEBUG_NAMES: LazyLock<Mutex<BTreeMap<String, AliasString>>> =
-    LazyLock::new(|| Mutex::new(BTreeMap::new()));
+    /// The mapping of Debug values to their aliases.
+    debug_names: BTreeMap<String, AliasString>,
 
-/// The mapping of pretty-printed Debug values to their aliases.
-static PRETTY_NAMES: LazyLock<Mutex<BTreeMap<String, AliasString>>> =
-    LazyLock::new(|| Mutex::new(BTreeMap::new()));
+    /// The mapping of pretty-printed Debug values to their aliases.
+    pretty_names: BTreeMap<String, AliasString>,
 
-static PREFIXES: LazyLock<Mutex<BTreeMap<TypeId, Prefix>>> =
-    LazyLock::new(|| Mutex::new(BTreeMap::new()));
-
-pub fn dump() {
-    let numbers = NUMBERS.lock().unwrap();
-    let debug_names = DEBUG_NAMES.lock().unwrap();
-    let pretty_names = PRETTY_NAMES.lock().unwrap();
-    let prefixes = PREFIXES.lock().unwrap();
-    println!("NUMBERS: {numbers:#?}");
-    println!("DEBUG_NAMES: {debug_names:#?}");
-    // println!("PRETTY_NAMES: {pretty_names:#?}");
-    println!("PREFIXES: {prefixes:#?}");
+    prefixes: BTreeMap<TypeId, Prefix>,
 }
 
-/// Change the brackets used to indicate aliased values.
-/// This can only be called once, and **panics** if called more than once.
-pub fn set_aliased_brackets(brackets: (&'static str, &'static str)) {
-    BRACKETS
-        .set(brackets)
-        .expect("Cannot set `aliased` brackets more than once");
+impl Default for AliasData {
+    fn default() -> Self {
+        Self {
+            brackets: ("⟪", "⟫"),
+            numbers: BTreeMap::default(),
+            debug_names: BTreeMap::default(),
+            pretty_names: BTreeMap::default(),
+            prefixes: BTreeMap::default(),
+        }
+    }
 }
 
-/// For testing, forget all aliasing data
-pub fn reset() {
-    NUMBERS.lock().unwrap().clear();
-    DEBUG_NAMES.lock().unwrap().clear();
-    PRETTY_NAMES.lock().unwrap().clear();
-    PREFIXES.lock().unwrap().clear();
+#[derive(Clone)]
+pub struct AliasContext(Arc<Mutex<AliasData>>);
+
+impl std::ops::Deref for AliasContext {
+    type Target = Mutex<AliasData>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
-fn brackets() -> (&'static str, &'static str) {
-    *BRACKETS.get_or_init(|| ("⟪", "⟫"))
+impl AliasContext {
+    pub fn new() -> Self {
+        Self(Arc::new(Mutex::new(AliasData::default())))
+    }
+
+    pub fn set_brackets(&mut self, brackets: (&'static str, &'static str)) {
+        self.0.lock().unwrap().brackets = brackets;
+    }
 }
 
 pub trait Aliasing: std::fmt::Debug + 'static {
-    fn aliased(&self) -> Aliased<'_, Self> {
-        Aliased(self)
+    fn aliased<'v, 'c>(&'v self, ctx: &'c AliasContext) -> Aliased<'v, 'c, Self> {
+        Aliased { val: self, ctx }
     }
 
     /// Sets the prefix for aliased values of this type
-    fn aliased_with_prefix(prefix: &str) {
+    fn aliased_with_prefix(ctx: &AliasContext, prefix: &str) {
         let type_id = std::any::TypeId::of::<Self>();
-        let mut lock = PREFIXES.lock().unwrap();
+        let mut lock = ctx.lock().unwrap();
 
-        if lock.values().find(|v| *v == prefix).is_some() {
+        if lock.prefixes.values().find(|v| *v == prefix).is_some() {
             #[cfg(feature = "tracing")]
             tracing::warn!("There is already a type with prefix `{prefix}`",);
         }
 
-        if let Some(existing) = lock.insert(type_id, prefix.to_string()) {
+        if let Some(existing) = lock.prefixes.insert(type_id, prefix.to_string()) {
             #[cfg(feature = "tracing")]
             tracing::warn!("Cannot set prefix more than once: existing prefix is `{existing}`",);
         }
     }
 
-    fn alias_numbered(&self) -> &Self {
+    fn alias_numbered(&self, ctx: &AliasContext) -> &Self {
         let type_id = std::any::TypeId::of::<Self>();
-        let mut lock = NUMBERS.lock().unwrap();
-        let counter = lock.entry(type_id).or_default();
-        let entry = counter.entry(format!("{self:?}")).or_insert(0);
-        let number = *entry;
-        *entry += 1;
+        let mut lock = ctx.lock().unwrap();
+        let counter = lock.numbers.entry(type_id).or_default();
+        let number = counter.len();
+        let entry = counter.entry(format!("{self:?}"));
+        match entry {
+            std::collections::btree_map::Entry::Occupied(_) => {
+                #[cfg(feature = "tracing")]
+                tracing::warn!(
+                    "Cannot alias_numbered more than once: existing number is `{number}`",
+                );
+                return self;
+            }
+            std::collections::btree_map::Entry::Vacant(e) => e.insert(number),
+        };
 
-        let prefix = PREFIXES
-            .lock()
-            .unwrap()
-            .get(&std::any::TypeId::of::<Self>())
-            .cloned();
+        let prefix = lock.prefixes.get(&std::any::TypeId::of::<Self>()).cloned();
         let repr = Repr {
             alias: Alias::Number(number),
             prefix,
+            brackets: lock.brackets,
         };
 
-        DEBUG_NAMES
-            .lock()
-            .unwrap()
+        lock.debug_names
             .insert(format!("{self:?}"), repr.to_string());
-        PRETTY_NAMES
-            .lock()
-            .unwrap()
+        lock.pretty_names
             .insert(format!("{self:#?}"), repr.to_string());
         self
     }
 
-    fn alias_named(&self, name: &str) -> &Self {
-        let prefix = PREFIXES
-            .lock()
-            .unwrap()
-            .get(&std::any::TypeId::of::<Self>())
-            .cloned();
+    fn alias_named(&self, ctx: &AliasContext, name: &str) -> &Self {
+        use std::collections::btree_map::Entry;
+        let mut lock = ctx.lock().unwrap();
+        let prefix = lock.prefixes.get(&std::any::TypeId::of::<Self>()).cloned();
         let repr = Repr {
             alias: Alias::Name(name.to_string()),
             prefix,
+            brackets: lock.brackets,
         };
 
-        DEBUG_NAMES
-            .lock()
-            .unwrap()
+        match (lock.debug_names.entry(format!("{self:?}")), lock.pretty_names
+            .entry(format!("{self:#?}"))) {
+            (Entry::Occupied(d), Entry::Occupied(p)) => {
+                todo!()
+                d.get();
+                p.get();
+            }
+            (Entry::Vacant(d), Entry::Vacant(p)) => {
+                d.insert(repr.to_string());
+                p.insert(repr.to_string());
+            },
+            _ => unreachable!("debug_names and pretty_names are updated together")
+        }
+
+        lock.debug_names
             .insert(format!("{self:?}"), repr.to_string());
-        PRETTY_NAMES
-            .lock()
-            .unwrap()
+        lock.pretty_names
             .insert(format!("{self:#?}"), repr.to_string());
         self
     }
@@ -167,22 +180,24 @@ pub trait Aliasing: std::fmt::Debug + 'static {
 
 impl<T> Aliasing for T where T: std::fmt::Debug + 'static {}
 
-pub struct Aliased<'a, T: ?Sized>(pub &'a T);
+pub struct Aliased<'v, 'c, T: ?Sized> {
+    val: &'v T,
+    ctx: &'c AliasContext,
+}
 
-impl<T: ?Sized + std::fmt::Debug> std::fmt::Debug for Aliased<'_, T> {
+impl<T: ?Sized + std::fmt::Debug> std::fmt::Debug for Aliased<'_, '_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut rep;
+        let lock = self.ctx.lock().unwrap();
         if f.alternate() {
-            let lock = PRETTY_NAMES.lock().unwrap();
-            rep = format!("{:#?}", self.0);
-            for (key, repr) in lock.iter().rev() {
+            rep = format!("{:#?}", self.val);
+            for (key, repr) in lock.pretty_names.iter().rev() {
                 rep = pretty_replace(&rep, key, &repr.to_string());
             }
             write!(f, "{}", rep)
         } else {
-            let lock = DEBUG_NAMES.lock().unwrap();
-            rep = format!("{:?}", self.0);
-            for (key, repr) in lock.iter().rev() {
+            rep = format!("{:?}", self.val);
+            for (key, repr) in lock.debug_names.iter().rev() {
                 rep = rep.replace(key, &repr.to_string());
             }
             write!(f, "{}", rep)
