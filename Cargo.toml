@@ -2,7 +2,13 @@
 name = "aliased"
 version = "0.1.0"
 edition = "2024"
-
+authors = ["Michael Dougherty <maackle.d@gmail.com>"]
+description = "Rewrite Debug output to replace long opaque values with short human-friendly aliases."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/maackle/aliased"
+readme = "README.md"
+keywords = ["debug", "logging", "alias", "pretty-print", "testing"]
+categories = ["development-tools::debugging", "development-tools::testing"]
 
 [dependencies]
 regex = "1"
