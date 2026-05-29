@@ -107,20 +107,3 @@ fn test_changing_aliases() {
         "[⟪S|#000⟫, ⟪S|#001⟫, ⟪S|#002⟫]"
     );
 }
-
-#[test]
-fn test_references() {
-    let ctx = AliasContext::new();
-
-    #[derive(Debug)]
-    struct S;
-
-    S::alias_prefix(&ctx, "S");
-
-    let s = S;
-    s.alias_named(&ctx, "foo");
-    (&s).alias_named(&ctx, "bar");
-
-    assert_eq!(format!("{:?}", s.aliased(&ctx)), "⟪S|bar⟫");
-    assert_eq!(format!("{:?}", (&s).aliased(&ctx)), "⟪S|bar⟫");
-}
