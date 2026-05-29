@@ -53,10 +53,10 @@ pub struct AliasData {
     numbers: BTreeMap<TypeId, BTreeMap<String, usize>>,
 
     /// The mapping of Debug values to their aliases.
-    debug_names: BTreeMap<String, AliasString>,
+    debug_names: BTreeMap<String, Repr>,
 
     /// The mapping of pretty-printed Debug values to their aliases.
-    pretty_names: BTreeMap<String, AliasString>,
+    pretty_names: BTreeMap<String, Repr>,
 
     prefixes: BTreeMap<TypeId, Prefix>,
 }
@@ -100,7 +100,7 @@ pub trait Aliasing: std::fmt::Debug + 'static {
     }
 
     /// Sets the prefix for aliased values of this type
-    fn aliased_with_prefix(ctx: &AliasContext, prefix: &str) {
+    fn alias_prefix(ctx: &AliasContext, prefix: &str) {
         let type_id = std::any::TypeId::of::<Self>();
         let mut lock = ctx.lock().unwrap();
 
@@ -122,10 +122,11 @@ pub trait Aliasing: std::fmt::Debug + 'static {
         let number = counter.len();
         let entry = counter.entry(format!("{self:?}"));
         match entry {
-            std::collections::btree_map::Entry::Occupied(_) => {
+            std::collections::btree_map::Entry::Occupied(_e) => {
                 #[cfg(feature = "tracing")]
                 tracing::warn!(
-                    "Cannot alias_numbered more than once: existing number is `{number}`",
+                    "Cannot alias_numbered more than once: existing alias is `{}`",
+                    _e.get(),
                 );
                 return self;
             }
@@ -139,15 +140,12 @@ pub trait Aliasing: std::fmt::Debug + 'static {
             brackets: lock.brackets,
         };
 
-        lock.debug_names
-            .insert(format!("{self:?}"), repr.to_string());
-        lock.pretty_names
-            .insert(format!("{self:#?}"), repr.to_string());
+        lock.debug_names.insert(format!("{self:?}"), repr.clone());
+        lock.pretty_names.insert(format!("{self:#?}"), repr.clone());
         self
     }
 
     fn alias_named(&self, ctx: &AliasContext, name: &str) -> &Self {
-        use std::collections::btree_map::Entry;
         let mut lock = ctx.lock().unwrap();
         let prefix = lock.prefixes.get(&std::any::TypeId::of::<Self>()).cloned();
         let repr = Repr {
@@ -156,24 +154,16 @@ pub trait Aliasing: std::fmt::Debug + 'static {
             brackets: lock.brackets,
         };
 
-        match (lock.debug_names.entry(format!("{self:?}")), lock.pretty_names
-            .entry(format!("{self:#?}"))) {
-            (Entry::Occupied(d), Entry::Occupied(p)) => {
-                todo!()
-                d.get();
-                p.get();
-            }
-            (Entry::Vacant(d), Entry::Vacant(p)) => {
-                d.insert(repr.to_string());
-                p.insert(repr.to_string());
-            },
-            _ => unreachable!("debug_names and pretty_names are updated together")
+        if let Some(existing) = lock.debug_names.insert(format!("{self:?}"), repr.clone()) {
+            #[cfg(feature = "tracing")]
+            tracing::warn!("alias name collision (debug): {} vs {}", existing, repr,);
         }
 
-        lock.debug_names
-            .insert(format!("{self:?}"), repr.to_string());
-        lock.pretty_names
-            .insert(format!("{self:#?}"), repr.to_string());
+        if let Some(existing) = lock.pretty_names.insert(format!("{self:#?}"), repr.clone()) {
+            #[cfg(feature = "tracing")]
+            tracing::warn!("alias name collision (pretty): {} vs {}", existing, repr,);
+        }
+
         self
     }
 }

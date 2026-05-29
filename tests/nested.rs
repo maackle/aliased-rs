@@ -38,8 +38,8 @@ fn test_nested_names() {
     let ctx = AliasContext::new();
     let s = fixture();
 
-    PublicKey::aliased_with_prefix(&ctx, "K");
-    SecretKey::aliased_with_prefix(&ctx, "S");
+    PublicKey::alias_prefix(&ctx, "K");
+    SecretKey::alias_prefix(&ctx, "S");
 
     s.u.keys[0].alias_named(&ctx, "key-a");
     s.u.keys[1].alias_named(&ctx, "key-b");
@@ -75,8 +75,8 @@ MyStruct {
 fn test_changing_aliases() {
     let ctx = AliasContext::new();
 
-    PublicKey::aliased_with_prefix(&ctx, "K");
-    SecretKey::aliased_with_prefix(&ctx, "S");
+    PublicKey::alias_prefix(&ctx, "K");
+    SecretKey::alias_prefix(&ctx, "S");
 
     let keys = (0..3)
         .map(|i| *PublicKey([i; 32]).alias_numbered(&ctx))
@@ -85,16 +85,25 @@ fn test_changing_aliases() {
         .map(|i| *SecretKey([i; 32]).alias_numbered(&ctx))
         .collect::<Vec<_>>();
 
-    let k = format!("{:?}", keys.aliased(&ctx));
-    let s = format!("{:?}", secrets.aliased(&ctx));
-
-    assert_eq!(k, "[⟪K|#000⟫, ⟪K|#001⟫, ⟪K|#002⟫]");
-    assert_eq!(s, "[⟪S|#000⟫, ⟪S|#001⟫, ⟪S|#002⟫]");
+    assert_eq!(
+        format!("{:?}", keys.aliased(&ctx)),
+        "[⟪K|#000⟫, ⟪K|#001⟫, ⟪K|#002⟫]"
+    );
+    assert_eq!(
+        format!("{:?}", secrets.aliased(&ctx)),
+        "[⟪S|#000⟫, ⟪S|#001⟫, ⟪S|#002⟫]"
+    );
 
     for (i, k) in keys.iter().enumerate() {
         k.alias_named(&ctx, &format!("key-{i}"));
     }
 
-    assert_eq!(k, "[⟪K|key-0⟫, ⟪K|key-1⟫, ⟪K|key-2⟫]");
-    assert_eq!(s, "[⟪S|#000⟫, ⟪S|#001⟫, ⟪S|#002⟫]");
+    assert_eq!(
+        format!("{:?}", keys.aliased(&ctx)),
+        "[⟪K|key-0⟫, ⟪K|key-1⟫, ⟪K|key-2⟫]"
+    );
+    assert_eq!(
+        format!("{:?}", secrets.aliased(&ctx)),
+        "[⟪S|#000⟫, ⟪S|#001⟫, ⟪S|#002⟫]"
+    );
 }
