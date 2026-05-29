@@ -98,9 +98,9 @@ pub(crate) fn set_prefix(ctx: &AliasContext, type_id: TypeId, prefix: &str) {
         #[cfg(feature = "tracing")]
         tracing::warn!("There is already a type with prefix `{prefix}`");
     }
-    if let Some(existing) = lock.prefixes.insert(type_id, prefix.to_string()) {
+    if let Some(_existing) = lock.prefixes.insert(type_id, prefix.to_string()) {
         #[cfg(feature = "tracing")]
-        tracing::warn!("Cannot set prefix more than once: existing prefix is `{existing}`");
+        tracing::warn!("Cannot set prefix more than once: existing prefix is `{_existing}`");
     }
 }
 
@@ -153,13 +153,13 @@ pub(crate) fn register_named(
     };
     let regex = pretty_regex(&pretty_key);
 
-    if let Some(existing) = lock.debug_names.insert(debug_key, repr.clone()) {
+    if let Some(_existing) = lock.debug_names.insert(debug_key, repr.clone()) {
         #[cfg(feature = "tracing")]
-        tracing::warn!("alias name collision (debug): {} vs {}", existing, repr);
+        tracing::warn!("alias name collision (debug): {} vs {}", _existing, repr);
     }
-    if let Some((existing, _)) = lock.pretty_names.insert(pretty_key, (repr.clone(), regex)) {
+    if let Some((_existing, _)) = lock.pretty_names.insert(pretty_key, (repr.clone(), regex)) {
         #[cfg(feature = "tracing")]
-        tracing::warn!("alias name collision (pretty): {} vs {}", existing, repr);
+        tracing::warn!("alias name collision (pretty): {} vs {}", _existing, repr);
     }
 }
 
