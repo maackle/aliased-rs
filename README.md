@@ -19,8 +19,8 @@ struct Key([u8; 32]);
 Key::alias_prefix("K");
 
 let a = Key([1; 32]);
-let b = Key([1; 32]);
-let c = Key([1; 32]);
+let b = Key([2; 32]);
+let c = Key([3; 32]);
 
 // The default Debug output is noisy.
 assert_eq!(format!("{:?}", a), "Key([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])");
