@@ -9,7 +9,8 @@ you register aliases for specific values up front, then post-processes the
 
 ## Two flavors
 
-Selected via Cargo features. At least one must be enabled.
+Selected via Cargo features. With neither enabled, the whole API still
+compiles but becomes a [no-op](#no-op-builds).
 
 ### `global` (default)
 
@@ -91,7 +92,21 @@ that a shorter registered value clobbers a longer one that contains it.
 | `contextual` | no      | exposes `aliased::contextual::{Aliasing, Aliased}`   |
 | `tracing`    | yes     | emits `tracing::warn!` for misuse / collisions       |
 
-Building with neither `global` nor `contextual` is a compile error.
+### No-op builds
+
+Building with neither `global` nor `contextual` is **not** an error. The whole
+API — both the global-shaped methods and `aliased::contextual::*` — still
+compiles, but every call is a no-op: `value.aliased(..)` formats with plain
+`Debug` (the `{:#?}` alternate form still pretty-prints) and registration calls
+do nothing. The substitution machinery and its `aho-corasick` / `regex`
+dependencies are not compiled.
+
+This lets you keep `aliased` call sites in a production app while turning the
+feature off:
+
+```toml
+aliased = { version = "0.1", default-features = false }
+```
 
 ## When to use this
 

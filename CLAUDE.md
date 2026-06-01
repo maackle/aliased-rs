@@ -6,11 +6,12 @@ logs and test failures readable.
 
 ## Crate layout
 
-- `src/lib.rs` — feature gate (`compile_error!` if neither `global` nor
-  `contextual`), re-exports, crate-level docs.
+- `src/lib.rs` — feature wiring (gates the active machinery vs. the `noop`
+  fallback), re-exports, crate-level docs.
 - `src/shared.rs` — `AliasContext`, internal `AliasData` / `Repr` / `Alias`,
   non-generic helpers (`set_prefix`, `register_named`, `register_numbered`,
-  `fmt_aliased`). Always compiled.
+  `fmt_aliased`). Compiled only in "active" mode
+  (`any(feature = "global", feature = "contextual")`).
 - `src/global.rs` — feature `global`. `Aliasing` trait + `Aliased<'v, T>`
   wrapper backed by a `LazyLock<AliasContext>` static. Re-exported at the
   crate root.
@@ -18,6 +19,13 @@ logs and test failures readable.
   `Aliased<'v, 'c, T>` wrapper that takes an explicit `&AliasContext`.
   Lives at `aliased::contextual::*`.
 - `src/pretty.rs` — regex-based substitution for pretty (`{:#?}`) output.
+  Active mode only.
+- `src/noop.rs` — fallback when **neither** flavor is enabled. Provides
+  dependency-free no-op mirrors of *both* surfaces: a zero-sized
+  `AliasContext`, the crate-root global-shaped `Aliasing` / `Aliased`, and a
+  `contextual` submodule with identical signatures. Every method is a
+  pass-through; `Aliased` formats via plain `Debug` (preserving the `{:#?}`
+  alternate flag). Pulls in neither `aho-corasick` nor `regex`.
 - `tests/nested.rs` — integration tests, use the `contextual` flavor.
 
 The generic trait methods in `global` / `contextual` exist only to compute
@@ -28,14 +36,25 @@ formatting logic.
 
 ## Cargo features
 
-- `global` (default) — process-wide static context.
-- `contextual` — explicit `&AliasContext` per call.
+- `global` (default) — process-wide static context. Pulls `aho-corasick` +
+  `regex`.
+- `contextual` — explicit `&AliasContext` per call. Pulls `aho-corasick` +
+  `regex`.
 - `tracing` (default) — emits `tracing::warn!` for misuse / collisions.
 
-Both flavors share the public `AliasContext` type (always exported). Both
-flavor traits are blanket-impl'd for `T: Debug + 'static`, so glob-importing
-both into the same module will cause method-name ambiguity — users should
-import only the flavor they intend to use.
+`aho-corasick` / `regex` are optional deps activated by the flavor features,
+so a featureless (no-op) build pulls neither.
+
+With at least one flavor enabled, both flavors share the public `AliasContext`
+type. Both flavor traits are blanket-impl'd for `T: Debug + 'static`, so
+glob-importing both into the same module will cause method-name ambiguity —
+users should import only the flavor they intend to use.
+
+Building with **neither** flavor is no longer a `compile_error!`; it selects
+the `noop` module instead (see Crate layout). `noop` re-exposes both surfaces,
+so call sites for either flavor keep compiling. The `noop` flavor traits are a
+separate thin layer (no formatting), so the "one source of truth" note above
+applies only to the active flavors.
 
 ## Tests / feature unification
 
@@ -47,7 +66,9 @@ aliased = { path = ".", features = ["contextual"] }
 ```
 
 This activates the `contextual` feature during test/doctest/example builds,
-so `cargo test` works without `--features contextual`.
+so `cargo test` works without `--features contextual`. A corollary: the `noop`
+fallback is *never* exercised by `cargo test` (the dev-dep always forces a
+flavor on). Verify it with `cargo build --no-default-features` instead.
 
 ## Key behaviors / gotchas
 
