@@ -14,6 +14,7 @@ categories = ["development-tools::debugging", "development-tools::testing"]
 all-features = true
 
 [dependencies]
+aho-corasick = "1"
 regex = "1"
 tracing = { version = "0.1", optional = true }
 

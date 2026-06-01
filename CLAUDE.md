@@ -55,13 +55,24 @@ so `cargo test` works without `--features contextual`.
   changing brackets later does not retroactively update existing aliases.
 - `alias_numbered` keys off `format!("{:?}", self)`. The second call on the
   same debug string is a no-op (with a `tracing::warn!`).
-- `pretty_names` stores a precompiled `Regex` next to the `Repr` so the
-  per-key regex is compiled once at registration, not on every print.
-- Substitution sorts keys longest-first to reduce the chance that a shorter
+- Substitution uses single-pass matchers cached in `AliasData`, rebuilt
+  lazily on the first print after any registration (the `DebugMatcher` /
+  `PrettyMatcher` `Stale`/`Empty`/`Built` enums). Any change that affects
+  output (`register_*`, `set_prefix`, `set_brackets`) calls `invalidate()`.
+- Plain (`{:?}`) path: one `aho-corasick` automaton built with
+  `MatchKind::LeftmostLongest`, so the longest registered key wins at a
+  position (no manual longest-first sort needed). `ac.replace_all` does the
+  whole substitution in one pass.
+- Pretty (`{:#?}`) path: all per-key patterns are combined into a single
+  alternation `Regex`, each alternative in a capture group so the matched
+  alias can be dispatched (group `i+1` ↔ pattern `i`). Alternatives are
+  ordered longest-first so the longest candidate wins regardless of the
+  engine's alternation precedence. This is also a correctness improvement
+  over the old per-key sequential passes, which could re-match and clobber
+  an earlier replacement's output.
+- Longest-first / leftmost-longest reduces the chance that a shorter
   registered value clobbers a longer one that contains it. Not foolproof
   against arbitrary overlap.
-- BTreeMap iteration order is alphabetical; `Aliased::fmt` materializes the
-  entries into a `Vec` to re-sort by `len` desc, then lex asc.
 
 ## Commands
 

@@ -15,6 +15,7 @@ dependencies = [
 name = "aliased"
 version = "0.1.0"
 dependencies = [
+ "aho-corasick",
  "aliased",
  "derive_more",
  "regex",

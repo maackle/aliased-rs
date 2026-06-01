@@ -5,7 +5,9 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 
-use crate::pretty::{pretty_regex, pretty_replace};
+use aho_corasick::{AhoCorasick, MatchKind};
+
+use crate::pretty::{combined_pretty_regex, pretty_pattern, pretty_replace_all};
 
 #[derive(Debug, Clone)]
 pub(crate) enum Alias {
@@ -40,12 +42,39 @@ impl fmt::Display for Repr {
     }
 }
 
+/// Cached single-pass matcher for plain (`{:?}`) substitution. Derived from
+/// `debug_names`; rebuilt lazily on the first print after any registration.
+enum DebugMatcher {
+    /// Needs (re)building from the current registry.
+    Stale,
+    /// Nothing registered — formatting is a pass-through.
+    Empty,
+    /// Built automaton plus replacements parallel to its patterns.
+    Built {
+        ac: AhoCorasick,
+        replacements: Vec<String>,
+    },
+}
+
+/// Cached single-pass matcher for pretty (`{:#?}`) substitution. Derived from
+/// `pretty_names`; rebuilt lazily on the first print after any registration.
+enum PrettyMatcher {
+    Stale,
+    Empty,
+    Built {
+        regex: regex::Regex,
+        replacements: Vec<String>,
+    },
+}
+
 pub(crate) struct AliasData {
     brackets: (&'static str, &'static str),
     numbers: BTreeMap<TypeId, BTreeMap<String, usize>>,
     debug_names: BTreeMap<String, Repr>,
-    pretty_names: BTreeMap<String, (Repr, regex::Regex)>,
+    pretty_names: BTreeMap<String, Repr>,
     prefixes: BTreeMap<TypeId, String>,
+    debug_matcher: DebugMatcher,
+    pretty_matcher: PrettyMatcher,
 }
 
 impl Default for AliasData {
@@ -56,6 +85,79 @@ impl Default for AliasData {
             debug_names: BTreeMap::default(),
             pretty_names: BTreeMap::default(),
             prefixes: BTreeMap::default(),
+            debug_matcher: DebugMatcher::Stale,
+            pretty_matcher: PrettyMatcher::Stale,
+        }
+    }
+}
+
+impl AliasData {
+    /// Mark the cached matchers stale so the next print rebuilds them. Called
+    /// after any change that affects substitution output (new alias, prefix,
+    /// or brackets).
+    fn invalidate(&mut self) {
+        self.debug_matcher = DebugMatcher::Stale;
+        self.pretty_matcher = PrettyMatcher::Stale;
+    }
+
+    /// Apply plain (`{:?}`) aliasing to `rep`, rebuilding the cached matcher if
+    /// it went stale since the last print.
+    fn aliased_debug(&mut self, rep: &str) -> String {
+        if let DebugMatcher::Stale = self.debug_matcher {
+            self.debug_matcher = if self.debug_names.is_empty() {
+                DebugMatcher::Empty
+            } else {
+                let mut keys = Vec::with_capacity(self.debug_names.len());
+                let mut replacements = Vec::with_capacity(self.debug_names.len());
+                for (key, repr) in &self.debug_names {
+                    keys.push(key.clone());
+                    replacements.push(repr.to_string());
+                }
+                // LeftmostLongest makes the longest key win where several could
+                // match at a position, matching the old longest-first loop.
+                let ac = AhoCorasick::builder()
+                    .match_kind(MatchKind::LeftmostLongest)
+                    .build(&keys)
+                    .expect("aho-corasick build from registered keys");
+                DebugMatcher::Built { ac, replacements }
+            };
+        }
+        match &self.debug_matcher {
+            DebugMatcher::Built { ac, replacements } => ac.replace_all(rep, replacements),
+            _ => rep.to_string(),
+        }
+    }
+
+    /// Apply pretty (`{:#?}`) aliasing to `rep`, rebuilding the cached matcher
+    /// if it went stale since the last print.
+    fn aliased_pretty(&mut self, rep: &str) -> String {
+        if let PrettyMatcher::Stale = self.pretty_matcher {
+            self.pretty_matcher = if self.pretty_names.is_empty() {
+                PrettyMatcher::Empty
+            } else {
+                // Longest keys first so a shorter key can't clobber one that
+                // contains it; lex tiebreak for deterministic output.
+                let mut entries: Vec<_> = self.pretty_names.iter().collect();
+                entries.sort_by(|(a, _), (b, _)| b.len().cmp(&a.len()).then_with(|| a.cmp(b)));
+                let mut patterns = Vec::with_capacity(entries.len());
+                let mut replacements = Vec::with_capacity(entries.len());
+                for (key, repr) in entries {
+                    patterns.push(pretty_pattern(key));
+                    replacements.push(repr.to_string());
+                }
+                let regex = combined_pretty_regex(&patterns);
+                PrettyMatcher::Built {
+                    regex,
+                    replacements,
+                }
+            };
+        }
+        match &self.pretty_matcher {
+            PrettyMatcher::Built {
+                regex,
+                replacements,
+            } => pretty_replace_all(regex, rep, replacements),
+            _ => rep.to_string(),
         }
     }
 }
@@ -78,7 +180,9 @@ impl AliasContext {
     /// Brackets are snapshotted into each alias at registration time, so this
     /// only affects aliases registered after the call.
     pub fn set_brackets(&self, brackets: (&'static str, &'static str)) {
-        self.lock().brackets = brackets;
+        let mut lock = self.lock();
+        lock.brackets = brackets;
+        lock.invalidate();
     }
 
     pub(crate) fn lock(&self) -> MutexGuard<'_, AliasData> {
@@ -104,6 +208,7 @@ pub(crate) fn set_prefix(ctx: &AliasContext, type_id: TypeId, prefix: &str) {
             tracing::warn!("Prefix collision: overwriting `{_existing}` with `{prefix}`");
         }
     }
+    lock.invalidate();
 }
 
 pub(crate) fn register_numbered(
@@ -134,9 +239,9 @@ pub(crate) fn register_numbered(
         prefix,
         brackets: lock.brackets,
     };
-    let regex = pretty_regex(&pretty_key);
     lock.debug_names.insert(debug_key, repr.clone());
-    lock.pretty_names.insert(pretty_key, (repr, regex));
+    lock.pretty_names.insert(pretty_key, repr);
+    lock.invalidate();
 }
 
 pub(crate) fn register_named(
@@ -153,16 +258,16 @@ pub(crate) fn register_named(
         prefix,
         brackets: lock.brackets,
     };
-    let regex = pretty_regex(&pretty_key);
 
     if let Some(_existing) = lock.debug_names.insert(debug_key, repr.clone()) {
         #[cfg(feature = "tracing")]
         tracing::warn!("alias name collision (debug): {} vs {}", _existing, repr);
     }
-    if let Some((_existing, _)) = lock.pretty_names.insert(pretty_key, (repr.clone(), regex)) {
+    if let Some(_existing) = lock.pretty_names.insert(pretty_key, repr.clone()) {
         #[cfg(feature = "tracing")]
         tracing::warn!("alias name collision (pretty): {} vs {}", _existing, repr);
     }
+    lock.invalidate();
 }
 
 pub(crate) fn fmt_aliased<T: ?Sized + fmt::Debug>(
@@ -170,24 +275,13 @@ pub(crate) fn fmt_aliased<T: ?Sized + fmt::Debug>(
     ctx: &AliasContext,
     f: &mut fmt::Formatter<'_>,
 ) -> fmt::Result {
-    let lock = ctx.lock();
-    if f.alternate() {
-        let mut rep = format!("{:#?}", val);
-        let mut entries: Vec<_> = lock.pretty_names.iter().collect();
-        // Longest keys first so a shorter key can't clobber one that contains
-        // it; lex tiebreak for deterministic output.
-        entries.sort_by(|(a, _), (b, _)| b.len().cmp(&a.len()).then_with(|| a.cmp(b)));
-        for (_key, (repr, regex)) in entries {
-            rep = pretty_replace(regex, &rep, &repr.to_string());
-        }
-        write!(f, "{}", rep)
+    let mut lock = ctx.lock();
+    let rendered = if f.alternate() {
+        let rep = format!("{:#?}", val);
+        lock.aliased_pretty(&rep)
     } else {
-        let mut rep = format!("{:?}", val);
-        let mut entries: Vec<_> = lock.debug_names.iter().collect();
-        entries.sort_by(|(a, _), (b, _)| b.len().cmp(&a.len()).then_with(|| a.cmp(b)));
-        for (key, repr) in entries {
-            rep = rep.replace(key, &repr.to_string());
-        }
-        write!(f, "{}", rep)
-    }
+        let rep = format!("{:?}", val);
+        lock.aliased_debug(&rep)
+    };
+    write!(f, "{}", rendered)
 }

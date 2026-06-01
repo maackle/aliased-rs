@@ -74,9 +74,13 @@ aliased = { version = "0.1", features = ["contextual"] }
 string substitution to replace each registered debug fragment with its
 alias.
 
-Pretty-printed output (`{:#?}`) is handled by a per-key regex that
-tolerates the indentation `{:#?}` introduces, so nested values still get
-aliased. Replacements are applied longest-key-first to reduce the chance
+All registered values are combined into a single matcher so each print
+scans the output once rather than once per registered alias: plain `{:?}`
+output uses an [Aho–Corasick](https://en.wikipedia.org/wiki/Aho%E2%80%93Corasick_algorithm)
+automaton, and pretty `{:#?}` output uses one alternation regex whose
+patterns tolerate the indentation `{:#?}` introduces, so nested values
+still get aliased. The matcher is rebuilt lazily after a registration and
+reused across prints. Matches resolve longest-first to reduce the chance
 that a shorter registered value clobbers a longer one that contains it.
 
 ## Features
@@ -91,8 +95,9 @@ Building with neither `global` nor `contextual` is a compile error.
 
 ## When to use this
 
-This is a debugging / logging aid. Substitution is roughly O(n × m) over
-the formatted string for every print — fine for logs, not for hot paths.
+This is a debugging / logging aid. Each print makes a single O(m) pass over
+the formatted string (after a one-time matcher build amortized across
+prints) — fine for logs, not for hot paths.
 
 ## License
 
