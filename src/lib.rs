@@ -83,4 +83,4 @@ pub use global::{Aliased, Aliasing};
 #[cfg(not(any(feature = "global", feature = "contextual")))]
 mod noop;
 #[cfg(not(any(feature = "global", feature = "contextual")))]
-pub use noop::{contextual, AliasContext, Aliased, Aliasing};
+pub use noop::{AliasContext, Aliased, Aliasing, contextual};
