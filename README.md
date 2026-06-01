@@ -7,6 +7,46 @@ When you `format!("{:?}", thing)` and `thing` contains long opaque values
 you register aliases for specific values up front, then post-processes the
 `Debug` (or `{:#?}`) output to substitute those values with the aliases.
 
+## Example
+
+```rust
+use aliased::*;
+
+#[derive(Debug)]
+struct Key([u8; 32]);
+
+// All aliases for this type are prefixed with "K|"
+Key::alias_prefix("K");
+
+let a = Key([1; 32]);
+let b = Key([1; 32]);
+let c = Key([1; 32]);
+
+// The default Debug output is noisy.
+assert_eq!(format!("{:?}", a), "Key([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])");
+
+// Without applying any aliases, the `aliased()` output is unchanged.
+assert_eq!(format!("{:?}", a.aliased()), "Key([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])");
+
+// You can apply a numbered alias:
+
+a.alias_numbered();
+b.alias_numbered();
+c.alias_numbered();
+assert_eq!(format!("{:?}", a.aliased()), "⟪K|#000⟫");
+assert_eq!(format!("{:?}", b.aliased()), "⟪K|#001⟫");
+assert_eq!(format!("{:?}", c.aliased()), "⟪K|#002⟫");
+
+// Or you can apply a named alias (even after already applying a numbered alias)
+
+a.alias_named("alice");
+b.alias_named("bob");
+c.alias_named("carol");
+assert_eq!(format!("{:?}", a.aliased()), "⟪K|alice⟫");
+assert_eq!(format!("{:?}", b.aliased()), "⟪K|bob⟫");
+assert_eq!(format!("{:?}", c.aliased()), "⟪K|carol⟫");
+```
+
 ## Two flavors
 
 Selected via Cargo features. With neither enabled, the whole API still

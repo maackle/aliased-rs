@@ -16,15 +16,19 @@
 //!   `&AliasContext`, so callers can keep isolated contexts (e.g. one per
 //!   test).
 //!
-//! Either or both may be enabled. With **neither** enabled the whole API
-//! still compiles, but as a no-op: `aliased(...)` formats with plain `Debug`
-//! and registration calls do nothing. This lets a production build switch
-//! aliasing off with `default-features = false` without touching call sites
-//! (and without pulling in `aho-corasick` / `regex`).
+//! Either or both may be enabled while testing.
+//! For release builds, it's intended that you use *neither* feature,
+//! i.e. use `default-features = false`.
+//!
+//! When using no features, the whole API still compiles, but as a no-op:
+//! `aliased(...)` formats with plain `Debug` and registration calls do nothing.
+//! This lets a production build switch aliasing off with `default-features = false`
+//! without touching call sites (and without pulling in `aho-corasick` / `regex`)
+//! for a minimal footprint.
 //!
 //! # Example (global)
 //!
-//! ```
+//! ```rust
 //! # #[cfg(feature = "global")]
 //! # {
 //! use aliased::*;
@@ -32,18 +36,42 @@
 //! #[derive(Debug)]
 //! struct Key([u8; 32]);
 //!
+//! // All aliases for this type will be prefixed with "K|"
 //! Key::alias_prefix("K");
 //!
 //! let a = Key([1; 32]);
-//! a.alias_named("alice");
+//! let b = Key([2; 32]);
+//! let c = Key([3; 32]);
 //!
+//! // The default Debug output is verbose.
+//! assert_eq!(format!("{:?}", a), "Key([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])");
+//!
+//! // Without applying any aliases, the `aliased()` output is unchanged.
+//! assert_eq!(format!("{:?}", a.aliased()), "Key([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])");
+//!
+//! // You can apply a numbered alias:
+//!
+//! a.alias_numbered();
+//! b.alias_numbered();
+//! c.alias_numbered();
+//! assert_eq!(format!("{:?}", a.aliased()), "⟪K|#000⟫");
+//! assert_eq!(format!("{:?}", b.aliased()), "⟪K|#001⟫");
+//! assert_eq!(format!("{:?}", c.aliased()), "⟪K|#002⟫");
+//!
+//! // Or you can apply a named alias (even after already applying a numbered alias)
+//!
+//! a.alias_named("alice");
+//! b.alias_named("bob");
+//! c.alias_named("carol");
 //! assert_eq!(format!("{:?}", a.aliased()), "⟪K|alice⟫");
+//! assert_eq!(format!("{:?}", b.aliased()), "⟪K|bob⟫");
+//! assert_eq!(format!("{:?}", c.aliased()), "⟪K|carol⟫");
 //! # }
 //! ```
 //!
 //! # Example (contextual)
 //!
-//! ```
+//! ```rust
 //! # #[cfg(feature = "contextual")]
 //! # {
 //! use aliased::AliasContext;
