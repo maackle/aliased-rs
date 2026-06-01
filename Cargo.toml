@@ -14,8 +14,10 @@ categories = ["development-tools::debugging", "development-tools::testing"]
 all-features = true
 
 [dependencies]
-aho-corasick = "1"
-regex = "1"
+# Substitution machinery is only compiled for the `global` / `contextual`
+# flavors; a featureless (no-op) build pulls neither of these.
+aho-corasick = { version = "1", optional = true }
+regex = { version = "1", optional = true }
 tracing = { version = "0.1", optional = true }
 
 [dev-dependencies]
@@ -28,7 +30,13 @@ derive_more = { version = "1.0", features = ["full"] }
 default = ["global", "tracing"]
 
 # Exposes trait which implicitly uses a single global `AliasContext`.
-global = []
+global = ["dep:aho-corasick", "dep:regex"]
 
 # Exposes trait which requires an explicit `AliasContext` to be passed in.
-contextual = []
+contextual = ["dep:aho-corasick", "dep:regex"]
+
+# Emits `tracing::warn!` for misuse / collisions.
+tracing = ["dep:tracing"]
+
+# With neither `global` nor `contextual` enabled, the whole API compiles as a
+# no-op (and `aho-corasick` / `regex` are not pulled in).

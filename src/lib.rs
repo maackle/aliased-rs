@@ -16,8 +16,11 @@
 //!   `&AliasContext`, so callers can keep isolated contexts (e.g. one per
 //!   test).
 //!
-//! Either, both, or neither feature combination is up to the user — but at
-//! least one of the two must be enabled, or this crate fails to compile.
+//! Either or both may be enabled. With **neither** enabled the whole API
+//! still compiles, but as a no-op: `aliased(...)` formats with plain `Debug`
+//! and registration calls do nothing. This lets a production build switch
+//! aliasing off with `default-features = false` without touching call sites
+//! (and without pulling in `aho-corasick` / `regex`).
 //!
 //! # Example (global)
 //!
@@ -59,14 +62,13 @@
 //! # }
 //! ```
 
-#[cfg(not(any(feature = "global", feature = "contextual")))]
-compile_error!(
-    "the `aliased` crate requires at least one of the `global` or `contextual` features to be enabled"
-);
-
+// Substitution machinery (and its `aho-corasick` / `regex` deps) is compiled
+// only when a flavor is enabled; the `noop` fallback below covers the rest.
+#[cfg(any(feature = "global", feature = "contextual"))]
 mod pretty;
+#[cfg(any(feature = "global", feature = "contextual"))]
 mod shared;
-
+#[cfg(any(feature = "global", feature = "contextual"))]
 pub use shared::AliasContext;
 
 #[cfg(feature = "contextual")]
@@ -76,3 +78,9 @@ pub mod contextual;
 mod global;
 #[cfg(feature = "global")]
 pub use global::{Aliased, Aliasing};
+
+// No flavor enabled: expose both surfaces as dependency-free no-ops.
+#[cfg(not(any(feature = "global", feature = "contextual")))]
+mod noop;
+#[cfg(not(any(feature = "global", feature = "contextual")))]
+pub use noop::{contextual, AliasContext, Aliased, Aliasing};
