@@ -63,6 +63,7 @@ impl<T> Aliasing for T where T: fmt::Debug + 'static {}
 /// `Debug` wrapper produced by [`Aliasing::aliased`]. Formatting it runs the
 /// inner value's `Debug` (or `{:#?}`) output and substitutes aliases drawn
 /// from the global context.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Aliased<'v, T: ?Sized> {
     val: &'v T,
 }

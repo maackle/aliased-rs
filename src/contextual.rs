@@ -56,6 +56,7 @@ impl<T> Aliasing for T where T: fmt::Debug + 'static {}
 /// `Debug` wrapper produced by [`Aliasing::aliased`]. Formatting it runs the
 /// inner value's `Debug` (or `{:#?}`) output and substitutes registered
 /// aliases drawn from the context it was created with.
+#[derive(Clone)]
 pub struct Aliased<'v, 'c, T: ?Sized> {
     val: &'v T,
     ctx: &'c AliasContext,
@@ -64,5 +65,31 @@ pub struct Aliased<'v, 'c, T: ?Sized> {
 impl<T: ?Sized + fmt::Debug> fmt::Debug for Aliased<'_, '_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         shared::fmt_aliased(self.val, self.ctx, f)
+    }
+}
+
+impl<'v, 'c, T: ?Sized + Eq> Eq for Aliased<'v, 'c, T> {}
+
+impl<'v, 'c, T: ?Sized + Ord> Ord for Aliased<'v, 'c, T> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.val.cmp(other.val)
+    }
+}
+
+impl<'v, 'c, T: ?Sized + PartialOrd> PartialOrd for Aliased<'v, 'c, T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.val.partial_cmp(other.val)
+    }
+}
+
+impl<'v, 'c, T: ?Sized + PartialEq> PartialEq for Aliased<'v, 'c, T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.val.eq(other.val)
+    }
+}
+
+impl<'v, 'c, T: ?Sized + std::hash::Hash> std::hash::Hash for Aliased<'v, 'c, T> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.val.hash(state);
     }
 }
