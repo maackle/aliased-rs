@@ -66,6 +66,10 @@
 //! assert_eq!(format!("{:?}", a.aliased()), "⟪K|alice⟫");
 //! assert_eq!(format!("{:?}", b.aliased()), "⟪K|bob⟫");
 //! assert_eq!(format!("{:?}", c.aliased()), "⟪K|carol⟫");
+//!
+//! // Works for pretty-printed output too.
+//! // Without `aliased()`, this output would be 34 lines long!.
+//! assert_eq!(format!("{:#?}", a.aliased()), "⟪K|alice⟫");
 //! # }
 //! ```
 //!
