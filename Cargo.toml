@@ -1,6 +1,6 @@
 [package]
 name = "aliased"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 authors = ["Michael Dougherty <maackle.d@gmail.com>"]
 description = "Rewrite Debug output to replace long opaque values with short human-friendly aliases."
