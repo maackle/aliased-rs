@@ -100,7 +100,9 @@ pub(crate) fn set_prefix(ctx: &AliasContext, type_id: TypeId, prefix: &str) {
     }
     if let Some(_existing) = lock.prefixes.insert(type_id, prefix.to_string()) {
         #[cfg(feature = "tracing")]
-        tracing::warn!("Cannot set prefix more than once: existing prefix is `{_existing}`");
+        if _existing != prefix {
+            tracing::warn!("Prefix collision: overwriting `{_existing}` with `{prefix}`");
+        }
     }
 }
 

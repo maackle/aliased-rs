@@ -41,8 +41,20 @@ isolated registries — for example, one per test.
 use aliased::AliasContext;
 use aliased::contextual::*;
 
-let ctx = AliasContext::new();
 // ...same API as global, but each method takes `&ctx`.
+let ctx = AliasContext::new();
+
+#[derive(Debug)]
+struct Key([u8; 32]);
+
+Key::alias_prefix(&ctx, "K");
+
+let a = Key([1; 32]);
+let b = Key([2; 32]);
+a.alias_named(&ctx, "alice");
+b.alias_named(&ctx, "bob");
+
+assert_eq!(format!("{:?}", (a, b).aliased(&ctx)), "(⟪K|alice⟫, ⟪K|bob⟫)");
 ```
 
 Enable in `Cargo.toml`:
@@ -69,11 +81,11 @@ that a shorter registered value clobbers a longer one that contains it.
 
 ## Features
 
-| feature      | default | effect                                              |
-|--------------|---------|-----------------------------------------------------|
+| feature      | default | effect                                               |
+| ------------ | ------- | ---------------------------------------------------- |
 | `global`     | yes     | exposes `aliased::Aliasing`, `Aliased`, `global_ctx` |
-| `contextual` | no      | exposes `aliased::contextual::{Aliasing, Aliased}`  |
-| `tracing`    | yes     | emits `tracing::warn!` for misuse / collisions      |
+| `contextual` | no      | exposes `aliased::contextual::{Aliasing, Aliased}`   |
+| `tracing`    | yes     | emits `tracing::warn!` for misuse / collisions       |
 
 Building with neither `global` nor `contextual` is a compile error.
 
