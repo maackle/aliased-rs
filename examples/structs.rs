@@ -40,9 +40,9 @@ fn main() {
     let shape = ComplexShape {
         uuids: vec![d.clone(), e.clone()],
         content: BTreeMap::from([
-            (hash_a.clone(), blob_a.clone()),
-            (hash_b.clone(), blob_b.clone()),
-            (hash_c.clone(), blob_c.clone()),
+            (hash_a, blob_a.clone()),
+            (hash_b, blob_b.clone()),
+            (hash_c, blob_c.clone()),
         ]),
         description: format!(
             "Here's some text that gets untouched and even contains one of the aliased UUIDs ({uuid1})"
@@ -54,8 +54,8 @@ fn main() {
     dbg!(shape.aliased());
     println!("```");
 
-    println!("");
-    println!("");
+    println!();
+    println!();
     println!("You probably can't even find the beginning of the output above.");
 
     hash_a.alias_named("a");
@@ -68,7 +68,7 @@ fn main() {
     e.alias_numbered();
 
     println!("However, with aliases, this is a very readable 12 lines:");
-    println!("");
+    println!();
     println!("```");
     dbg!(shape.aliased());
     println!("```");

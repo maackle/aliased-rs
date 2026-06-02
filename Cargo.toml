@@ -48,3 +48,7 @@ tracing = ["dep:tracing"]
 
 # With neither `global` nor `contextual` enabled, the whole API compiles as a
 # no-op (and `aho-corasick` / `regex` are not pulled in).
+
+[[example]]
+name = "structs"
+required-features = ["global"]
