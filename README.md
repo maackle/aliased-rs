@@ -1,13 +1,15 @@
 # aliased
 
-Replace noisy `Debug` output with short, human-friendly aliases.
+Give long values (like keys, hashes, IDs, or binary blobs) a short, human-friendly alias which will be used in all Debug output.
 
-When you `format!("{:?}", thing)` and `thing` contains long opaque values
-(public keys, hashes, IDs), the output becomes unreadable. `aliased` lets
-you register aliases for specific values up front, then post-processes the
-`Debug` (or `{:#?}`) output to substitute those values with the aliases.
+When you `format!("{:?}", thing)` and `thing` contains long opaque values, the output becomes noisy and hard to read. 
+`aliased` lets you register aliases for specific values up front, then rewrites the `Debug` (or `{:#?}`) output to substitute those values with the aliases.
 
-## Example
+See this [example](examples/structs.rs) for a compelling use case.
+
+## Examples
+
+### Basic usage
 
 ```rust
 use aliased::*;
@@ -15,7 +17,7 @@ use aliased::*;
 #[derive(Debug)]
 struct Key([u8; 32]);
 
-// All aliases for this type are prefixed with "K|"
+// All aliases for this type will now be prefixed with "K|"
 Key::alias_prefix("K");
 
 let a = Key([1; 32]);
@@ -33,22 +35,27 @@ assert_eq!(format!("{:?}", a.aliased()), "Key([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 
 a.alias_numbered();
 b.alias_numbered();
 c.alias_numbered();
-assert_eq!(format!("{:?}", a.aliased()), "⟪K|#000⟫");
-assert_eq!(format!("{:?}", b.aliased()), "⟪K|#001⟫");
-assert_eq!(format!("{:?}", c.aliased()), "⟪K|#002⟫");
+assert_eq!(format!("{:?}", (a, b, c).aliased()), "(⟪K|#000⟫, ⟪K|#001⟫, ⟪K|#002⟫)");
 
 // Or you can apply a named alias (even after already applying a numbered alias)
 
 a.alias_named("alice");
 b.alias_named("bob");
 c.alias_named("carol");
-assert_eq!(format!("{:?}", a.aliased()), "⟪K|alice⟫");
-assert_eq!(format!("{:?}", b.aliased()), "⟪K|bob⟫");
-assert_eq!(format!("{:?}", c.aliased()), "⟪K|carol⟫");
+assert_eq!(format!("{:?}", (a, b, c).aliased()), "(⟪K|alice⟫, ⟪K|bob⟫, ⟪K|carol⟫)");
 
 // Works for pretty-printed output too.
-// Without `aliased()`, this output would be 34 lines long!.
-assert_eq!(format!("{:#?}", a.aliased()), "⟪K|alice⟫");
+// Without `aliased()`, this output would be 34 lines long!
+assert_eq!(
+    format!("{:#?}", (a, b, c).aliased()), 
+    "
+(
+    ⟪K|alice⟫,
+    ⟪K|bob⟫,
+    ⟪K|carol⟫,
+)
+".trim()
+);
 ```
 
 ## Two flavors

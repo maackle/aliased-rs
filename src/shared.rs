@@ -29,6 +29,12 @@ pub(crate) struct Repr {
     alias: Alias,
     prefix: Option<String>,
     brackets: (&'static str, &'static str),
+    /// The type that registered this alias. Used to distinguish a genuine
+    /// cross-type Debug-string collision from an intentional re-alias of the
+    /// same value (e.g. numbered then named). Only read by the collision
+    /// warning, so it is dead code when `tracing` is disabled.
+    #[cfg_attr(not(feature = "tracing"), allow(dead_code))]
+    type_id: TypeId,
 }
 
 impl fmt::Display for Repr {
@@ -98,6 +104,40 @@ impl AliasData {
     fn invalidate(&mut self) {
         self.debug_matcher = DebugMatcher::Stale;
         self.pretty_matcher = PrettyMatcher::Stale;
+    }
+
+    /// Register `repr` under both its plain and pretty keys and invalidate the
+    /// cached matchers.
+    ///
+    /// Detecting a collision is free: `BTreeMap::insert` already hands back any
+    /// displaced value, so we only inspect what we already have. When the
+    /// displaced alias belonged to a *different* type, two distinct types share
+    /// a Debug string and cannot be aliased independently — the substitution
+    /// runs on rendered text, which has lost all type information, so only the
+    /// last writer survives. We warn rather than try to fix it (impossible with
+    /// string substitution). A same-type displacement is an intentional
+    /// re-alias (e.g. numbered then named) and stays quiet.
+    fn insert_repr(&mut self, debug_key: String, pretty_key: String, repr: Repr) {
+        let _prev_debug = self.debug_names.insert(debug_key, repr.clone());
+        let _prev_pretty = self.pretty_names.insert(pretty_key, repr.clone());
+        #[cfg(feature = "tracing")]
+        {
+            if let Some(existing) = _prev_debug
+                && existing.type_id != repr.type_id
+            {
+                tracing::warn!(
+                    "Alias collision: new alias `{repr}` overshadows `{existing}` because they both have the same Debug formatting"
+                );
+            }
+            if let Some(existing) = _prev_pretty
+                && existing.type_id != repr.type_id
+            {
+                tracing::warn!(
+                    "Alias collision: new alias `{repr}` overshadows `{existing}` because they both have the same pretty (`{{:#?}}`) formatting"
+                );
+            }
+        }
+        self.invalidate();
     }
 
     /// Apply plain (`{:?}`) aliasing to `rep`, rebuilding the cached matcher if
@@ -238,10 +278,9 @@ pub(crate) fn register_numbered(
         alias: Alias::Number(number),
         prefix,
         brackets: lock.brackets,
+        type_id,
     };
-    lock.debug_names.insert(debug_key, repr.clone());
-    lock.pretty_names.insert(pretty_key, repr);
-    lock.invalidate();
+    lock.insert_repr(debug_key, pretty_key, repr);
 }
 
 pub(crate) fn register_named(
@@ -257,17 +296,9 @@ pub(crate) fn register_named(
         alias: Alias::Name(name.to_string()),
         prefix,
         brackets: lock.brackets,
+        type_id,
     };
-
-    if let Some(_existing) = lock.debug_names.insert(debug_key, repr.clone()) {
-        #[cfg(feature = "tracing")]
-        tracing::warn!("alias name collision (debug): {} vs {}", _existing, repr);
-    }
-    if let Some(_existing) = lock.pretty_names.insert(pretty_key, repr.clone()) {
-        #[cfg(feature = "tracing")]
-        tracing::warn!("alias name collision (pretty): {} vs {}", _existing, repr);
-    }
-    lock.invalidate();
+    lock.insert_repr(debug_key, pretty_key, repr);
 }
 
 pub(crate) fn fmt_aliased<T: ?Sized + fmt::Debug>(

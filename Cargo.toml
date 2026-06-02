@@ -23,8 +23,16 @@ tracing = { version = "0.1", optional = true }
 [dev-dependencies]
 # Self dev-dep activates `contextual` for tests/doctests/examples without
 # requiring `cargo test --features contextual` on the command line.
-aliased = { path = ".", default-features = false, features = ["contextual", "tracing"] }
-derive_more = { version = "1.0", features = ["full"] }
+aliased = { path = ".", default-features = false, features = [
+  "contextual",
+  "tracing",
+] }
+derive_more = { version = "2.1", features = ["full"] }
+pretty_assertions = "1.4"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# `no-env-filter` so `logs_contain` sees warnings emitted by the `aliased`
+# crate itself, not just events originating in the test crate.
+tracing-test = { version = "0.2", features = ["no-env-filter"] }
 
 [features]
 default = ["global", "tracing"]
