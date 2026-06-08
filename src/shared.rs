@@ -263,7 +263,7 @@ pub(crate) fn register_numbered(
     match counter.entry(debug_key.clone()) {
         std::collections::btree_map::Entry::Occupied(_e) => {
             #[cfg(feature = "tracing")]
-            tracing::warn!(
+            tracing::debug!(
                 "Cannot alias_numbered more than once: existing alias is `{}`",
                 _e.get(),
             );
